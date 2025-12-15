@@ -22,7 +22,7 @@ Arrohan is a real-time hazard detection system powered by YOLOv8/YOLO11, designe
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository_url>
+    git clone https://github.com/BMWareSPEEDY/Aarohan_project
     cd Arrohan_2025
     ```
 
