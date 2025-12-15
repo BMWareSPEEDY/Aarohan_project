@@ -1,0 +1,26 @@
+names:
+- Empty
+- Illegal
+- Illegal-parking
+- LicensePlate
+- MIU
+- Occupied
+- Roads
+- Slot-empty
+- Slot-occupied
+- Trees
+- car
+- motorcycle
+- redline
+- whiteline
+- yellowline
+nc: 15
+roboflow:
+  license: CC BY 4.0
+  project: arrohan-project-dude-flying
+  url: https://universe.roboflow.com/arrohan-project-2025/arrohan-project-dude-flying/dataset/2
+  version: 2
+  workspace: arrohan-project-2025
+test: ../test/images
+train: ../train/images
+val: ../valid/images

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Scan Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <!-- Small overrides so we can remove the sidebar and scale up tiles without editing styles.css -->
+  <style>
+    /* make the app full-width (hide/replace the sidebar layout) */
+    .app-shell {
+      grid-template-columns: 1fr !important;
+    }
+
+    .sidebar {
+      display: none !important;
+    }
+
+    /* enlarge metric tiles, spacing and readable text */
+    .metrics-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: 18px !important;
+    }
+
+    .metric-card {
+      padding: 20px 22px !important;
+      border-radius: 20px !important;
+      min-height: 110px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .metric-label {
+      font-size: 12px !important;
+      color: var(--text-soft);
+      letter-spacing: 0.08em;
+    }
+
+    .metric-value {
+      font-size: 34px !important;
+      font-weight: 700 !important;
+      color: var(--text);
+    }
+
+    .metric-footer {
+      font-size: 12px !important;
+      color: var(--text-soft);
+    }
+
+    /* make current-place pill clearer */
+    .current-place-pill {
+      font-size: 13px !important;
+      padding: 6px 12px !important;
+      border-radius: 999px !important;
+    }
+
+    /* bigger inputs / buttons for clarity */
+    .place-input-row .field input {
+      padding: 10px 12px !important;
+      font-size: 14px !important;
+    }
+
+    .place-input-row .primary-button {
+      padding: 10px 14px !important;
+      font-size: 14px !important;
+    }
+
+    /* table tweaks: increase row height for readability */
+    table th,
+    table td {
+      padding: 12px 14px !important;
+      font-size: 13px;
+    }
+
+    .table-wrapper {
+      max-height: 420px !important;
+    }
+
+    /* responsive fallback */
+    @media (max-width: 960px) {
+      .metrics-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      .place-metrics-row {
+        grid-template-columns: 1fr !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app-shell">
+    <main class="main">
+      <!-- Top Bar (no branding or logo) -->
+      <header class="topbar" style="padding-left:0; padding-right:0;">
+        <div>
+          <h1 style="margin:0; font-size:20px;">Scan Dashboard</h1>
+          <p style="margin:4px 0 0; color:var(--text-soft);">Type an area name/code and click Load to view scan results.
+          </p>
+        </div>
+
+        <div class="topbar-right" style="min-width:160px;">
+          <div class="topbar-clock">
+            <span id="clock-date"></span>
+            <span id="clock-time"></span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Status Banner -->
+      <section id="status-banner" class="status-banner" style="margin-top:12px;">
+        <span class="status-indicator" id="status-indicator">●</span>
+        <span id="status-text">No area loaded. Enter an area name/code and press Load.</span>
+      </section>
+
+      <!-- Live Feed Section -->
+      <section class="live-feed-container" id="live-feed-container" style="margin-top:12px;">
+        <div class="live-feed-header"
+          style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--surface-1); border-radius:12px;">
+          <h3 style="margin:0; font-size:15px;">Live Detection Feed <span class="live-badge" id="live-badge"
+              style="display:none; background:#22c55e; color:#fff; padding:2px 8px; border-radius:999px; font-size:11px; margin-left:8px;">LIVE</span>
+          </h3>
+          <button id="toggle-feed" class="ghost-button">Show Feed</button>
+        </div>
+        <div class="live-feed-wrapper" id="live-feed-wrapper" style="display:none; margin-top:8px; text-align:center;">
+          <img id="live-feed" alt="Live webcam feed with detections" style="max-width:100%; border-radius:8px;" />
+        </div>
+      </section>
+
+      <!-- Place Selector + Bigger Metrics -->
+      <section class="layout-two-col place-metrics-row" style="margin-top:12px;">
+        <div class="panel" style="padding-bottom:14px;">
+          <div class="panel-header">
+            <h2 style="font-size:15px; margin:0;">Load Area</h2>
+          </div>
+
+          <div class="place-input-row" style="margin-top:10px; display:flex; gap:10px; align-items:flex-end;">
+            <div class="field full-width" style="flex:1;">
+              <label for="place-input" style="font-size:12px; color:var(--text-soft);">Area name or code</label>
+              <input id="place-input" type="text" placeholder="e.g. blr-central, campus-sector-7" />
+            </div>
+
+            <button id="place-load-btn" class="primary-button">Load</button>
+          </div>
+
+          <p class="helper-text" style="margin-top:10px;">Loads detected issues for the selected area.</p>
+
+          <div class="current-place-row" style="margin-top:12px;">
+            <span class="field-label" style="color:var(--text-soft);">Viewing</span>
+            <span id="current-place-label" class="current-place-pill">No area selected</span>
+          </div>
+        </div>
+
+        <!-- Larger metric cards -->
+        <div class="metrics-grid" style="display:grid; align-content:start;">
+          <article class="metric-card">
+            <div class="metric-label">Total Incidents</div>
+            <div class="metric-value" id="metric-total">—</div>
+            <div class="metric-footer">All issues in this area</div>
+          </article>
+
+          <article class="metric-card">
+            <div class="metric-label">Critical &amp; Open</div>
+            <div class="metric-value" id="metric-critical">—</div>
+            <div class="metric-footer">High-urgency items</div>
+          </article>
+
+          <article class="metric-card">
+            <div class="metric-label">Average Time Open</div>
+            <div class="metric-value" id="metric-ttc">—</div>
+            <div class="metric-footer">Detection → now (resolved only)</div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Filters + Map (unchanged layout inside) -->
+      <section class="layout-two-col" style="margin-top:10px;">
+        <!-- Filters -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2 style="font-size:15px; margin:0;">Filter Incidents</h2>
+            <button id="clear-filters" class="ghost-button">Reset</button>
+          </div>
+
+          <div class="filters-grid" style="margin-top:10px;">
+            <div class="field">
+              <label for="filter-issue">Issue Type</label>
+              <select id="filter-issue">
+                <option value="">All</option>
+                <option value="Parking Violation">Parking Violation</option>
+                <option value="Unauthorized Tree Removal">Unauthorized Tree Removal</option>
+                <option value="Environmental Hazard">Environmental Hazard</option>
+                <option value="Traffic Incident">Traffic Incident</option>
+                <option value="Infrastructure Damage">Infrastructure Damage</option>
+                <option value="Unauthorized Construction">Unauthorized Construction</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="filter-severity">Severity</label>
+              <select id="filter-severity">
+                <option value="">All</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="filter-status">Status</label>
+              <select id="filter-status">
+                <option value="">All</option>
+                <option value="Open">Open</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="filter-zone">Zone</label>
+              <select id="filter-zone">
+                <option value="">All</option>
+                <option value="Central">Central</option>
+                <option value="North">North</option>
+                <option value="South">South</option>
+                <option value="East">East</option>
+                <option value="West">West</option>
+              </select>
+            </div>
+          </div>
+
+          <button id="apply-filters" class="primary-button full-width" style="margin-top:10px;">
+            Apply Filters
+          </button>
+        </div>
+
+        <!-- Map / Heatmap Placeholder -->
+        <div class="panel map-panel">
+          <div class="panel-header">
+            <h2 style="font-size:15px; margin:0;">Map Preview</h2>
+            <span class="panel-subtitle">Mock spatial preview; replace with real coordinates later.</span>
+          </div>
+
+          <div class="map-placeholder" style="margin-top:10px;">
+            <div class="map-grid" style="height:180px;"></div>
+            <div class="map-legend" style="margin-top:8px;">
+              <span><span class="legend-dot legend-critical"></span>Critical</span>
+              <span><span class="legend-dot legend-high"></span>High</span>
+              <span><span class="legend-dot legend-medium"></span>Medium</span>
+              <span><span class="legend-dot legend-low"></span>Low</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Charts -->
+      <section class="layout-two-col charts-row" style="margin-top:12px;">
+        <div class="panel">
+          <div class="panel-header">
+            <h2 style="font-size:15px; margin:0;">Incidents by Type</h2>
+          </div>
+          <div id="chart-by-type" class="bar-chart empty-placeholder">Load an area to see breakdown by type.</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2 style="font-size:15px; margin:0;">Incidents by Severity</h2>
+          </div>
+          <div id="chart-by-severity" class="stacked-bar empty-placeholder">Load an area to see severity distribution.
+          </div>
+        </div>
+      </section>
+
+      <!-- Incident Table -->
+      <section class="panel table-panel" style="margin-top:12px;">
+        <div class="panel-header">
+          <h2 style="font-size:15px; margin:0;">Incident List</h2>
+          <span id="table-count" class="panel-subtitle">0 incidents</span>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Issue</th>
+                <th>Severity</th>
+                <th>Status</th>
+                <th>Zone</th>
+                <th>Detected At</th>
+                <th>Source</th>
+                <th>Evidence</th>
+              </tr>
+            </thead>
+            <tbody id="incident-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
